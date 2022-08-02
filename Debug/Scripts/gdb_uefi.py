@@ -111,14 +111,14 @@ class ReloadUefi (gdb.Command):
     # Same comment as above regarding newer Py bindings...
     #
 
-    def value_data (self, value, bytes=0):
+    def value_data(self, value, bytes=0):
         value_address = gdb.Value (value.address)
         array_t = self.ptype ('UINT8')
         value_array = value_address.cast (array_t)
         if bytes == 0:
             bytes = value.type.sizeof
         data = array.array ('B')
-        for i in range (0, bytes):
+        for i in range(bytes):
             data.append (value_array[i])
         return data
 
@@ -154,16 +154,16 @@ class ReloadUefi (gdb.Command):
     # [32-bit, 16-bit, 16-bit, [8 bytes]]
     #
 
-    def search_config (self, cfg_table, count, guid):
+    def search_config(self, cfg_table, count, guid):
         index = 0
         while index != count:
             cfg_entry = cfg_table[index]['VendorGuid']
             if cfg_entry['Data1'] == guid[0] and \
-                    cfg_entry['Data2'] == guid[1] and \
-                    cfg_entry['Data3'] == guid[2] and \
-                    self.value_data (cfg_entry['Data4']).tolist () == guid[3]:
+                        cfg_entry['Data2'] == guid[1] and \
+                        cfg_entry['Data3'] == guid[2] and \
+                        self.value_data (cfg_entry['Data4']).tolist () == guid[3]:
                 return cfg_table[index]['VendorTable']
-            index = index + 1
+            index += 1
         return gdb.Value(self.EINVAL)
 
     #
@@ -215,10 +215,8 @@ class ReloadUefi (gdb.Command):
     # Returns True if pe_headers refer to a PE32+ image.
     #
 
-    def pe_is_64 (self, pe_headers):
-        if pe_headers['Pe32']['OptionalHeader']['Magic'] == self.PE32PLUS_MAGIC:
-            return True
-        return False
+    def pe_is_64(self, pe_headers):
+        return pe_headers['Pe32']['OptionalHeader']['Magic'] == self.PE32PLUS_MAGIC
 
     #
     # Returns the PE fileheader.
@@ -265,8 +263,8 @@ class ReloadUefi (gdb.Command):
     #
     # TODO: Proper ELF support.
     #
-    def get_sym_cmd (self, file, orgbase, sections, macho, fallack_base):
-        cmd = 'add-symbol-file %s' % file
+    def get_sym_cmd(self, file, orgbase, sections, macho, fallack_base):
+        cmd = f'add-symbol-file {file}'
 
         # Fallback case, no sections, just load .text.
         if not sections.get('.text') or not sections.get('.data'):
@@ -301,7 +299,7 @@ class ReloadUefi (gdb.Command):
                 elif line.startswith('segname'):
                     segname = line.split()[1]
                 elif line.startswith('addr'):
-                    machsections[segname + '.' + sectname] = long(line.split()[1], base=16)
+                    machsections[f'{segname}.{sectname}'] = long(line.split()[1], base=16)
                     in_sect = False
 
         # 2. Convert section names to gdb sections.
@@ -334,7 +332,7 @@ class ReloadUefi (gdb.Command):
     # TODO: Support TE images.
     #
 
-    def parse_image (self, image, syms):
+    def parse_image(self, image, syms):
         orgbase = base = image['ImageBase']
         pe = self.pe_headers (base)
         opt = self.pe_optional (pe)
@@ -349,8 +347,8 @@ class ReloadUefi (gdb.Command):
             sym_name = sym_name.cast (self.ptype('CHAR8')).string ()
             sym_name_dbg = re.sub(r"\.dll$", ".debug", sym_name)
             macho = False
-            if os.path.isdir(sym_name + '.dSYM'):
-                sym_name += '.dSYM/Contents/Resources/DWARF/' + os.path.basename(sym_name)
+            if os.path.isdir(f'{sym_name}.dSYM'):
+                sym_name += f'.dSYM/Contents/Resources/DWARF/{os.path.basename(sym_name)}'
                 macho = True
             elif sym_name_dbg != sym_name and os.path.exists(sym_name_dbg):
                 # TODO: implement .elf handling.
@@ -363,10 +361,10 @@ class ReloadUefi (gdb.Command):
     # symbols.
     #
 
-    def parse_edii (self, edii, count):
+    def parse_edii(self, edii, count):
         index = 0
         syms = []
-        print ("Found {} images...".format(count))
+        print(f"Found {count} images...")
         while index != count:
             entry = edii[index]
             if entry['ImageInfoType'].dereference () == 1:
@@ -374,15 +372,15 @@ class ReloadUefi (gdb.Command):
                 self.parse_image(entry['LoadedImageProtocolInstance'], syms)
             else:
                 print ("Skipping unknown EFI_DEBUG_IMAGE_INFO (Type 0x%x)" % \
-                        entry['ImageInfoType'].dereference ())
-            index = index + 1
+                            entry['ImageInfoType'].dereference ())
+            index += 1
         gdb.execute ("symbol-file")
         print ("Loading new symbols...")
         for sym in syms:
             try:
                 gdb.execute (sym)
-            except (gdb.error) as err:
-                print ('Failed: %s' % err)
+            except gdb.error as err:
+                print(f'Failed: {err}')
 
     #
     # Parses EFI_DEBUG_IMAGE_INFO_TABLE_HEADER, in order to load
@@ -430,7 +428,7 @@ class ReloadUefi (gdb.Command):
     # Handler for reload-uefi.
     #
 
-    def invoke (self, arg, from_tty):
+    def invoke(self, arg, from_tty):
         args = arg.split(' ')
         try:
             opts, args = getopt.getopt(args, "o", ["offset-by-headers"])
@@ -443,16 +441,15 @@ class ReloadUefi (gdb.Command):
 
         if len(args) >= 1 and args[0] != '':
             gdb.execute ("symbol-file")
-            gdb.execute ("symbol-file %s" % args[0])
+            gdb.execute(f"symbol-file {args[0]}")
         else:
             # FIXME: gdb.objfiles () loses files after symbol-file execution,
             # so we have to extract GdbSymbs.dll manually.
             lines = gdb.execute ("info files", to_string=True).split('\n')
             for line in lines:
-                m = re.search("`([^']+)'", line)
-                if m:
+                if m := re.search("`([^']+)'", line):
                     gdb.execute ("symbol-file")
-                    gdb.execute ("symbol-file %s" % m.group(1))
+                    gdb.execute(f"symbol-file {m[1]}")
                     break
 
         est = self.search_est ()
@@ -467,10 +464,8 @@ class UefiStringPrinter:
     def __init__(self, val):
         self.val = val
 
-    def to_string (self):
-        if not self.val:
-            return "NULL"
-        return 'L"' + UefiMisc.parse_utf16(self.val) + '"'
+    def to_string(self):
+        return 'L"' + UefiMisc.parse_utf16(self.val) + '"' if self.val else "NULL"
 
 class UefiEfiStatusPrinter:
     def __init__(self, val):
@@ -493,14 +488,14 @@ class UefiGuidPrinter:
     def to_string (self):
         return UefiMisc.parse_guid(self.val)
 
-def lookup_uefi_type (val):
-    if str(val.type) == 'const CHAR16 *' or str(val.type) == 'CHAR16 *':
+def lookup_uefi_type(val):
+    if str(val.type) in {'const CHAR16 *', 'CHAR16 *'}:
         return UefiStringPrinter(val)
     elif str(val.type) == 'EFI_STATUS':
         return UefiEfiStatusPrinter(val)
     elif str(val.type) == 'RETURN_STATUS':
         return UefiReturnStatusPrinter(val)
-    elif str(val.type) == 'GUID' or str(val.type) == 'EFI_GUID':
+    elif str(val.type) in {'GUID', 'EFI_GUID'}:
         return UefiGuidPrinter(val)
     return None
 

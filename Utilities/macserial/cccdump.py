@@ -8,9 +8,7 @@ import struct
 
 def readaddr(ea):
     a = ida_bytes.get_bytes(ea, 8)
-    if a == BADADDR:
-        return None
-    return struct.unpack("L", a)[0]
+    return None if a == BADADDR else struct.unpack("L", a)[0]
 
 def readstr(ea, l=256):
     if ea == BADADDR:
@@ -19,14 +17,10 @@ def readstr(ea, l=256):
     str = ""
     while 1:
         c = ida_bytes.get_bytes(ea, 1)
-        if c == BADADDR:
-            if str == "":
-                return None
-            else:
-                return str
-        elif c == "\0":
+        if c == BADADDR and str == "":
+            return None
+        elif c in [BADADDR, "\0"]:
             return str
-
         str += c
         ea += 1
         if len(str) > l:
@@ -34,24 +28,23 @@ def readstr(ea, l=256):
 
 base = get_name_ea(0, "_show")
 count = 0
-print 'typedef enum {'
+base = get_name_ea(0, "_show")
 while 1:
     s = readstr(readaddr(base))
-    if s == None:
+    if s is None:
         break
     info = s.split('-', 1)
-    print '  %s, // %s' % (info[0].strip().replace(',', '_'), info[1].strip())
+    s = readstr(readaddr(base))
     base += 8
     count += 1;
 
     name = get_name(base)
-    if name != None and name != "" and name != "_show":
+    if name not in [None, "", "_show"]:
         break
-print '} AppleModel;'
-print '#define APPLE_MODEL_MAX %d' % count
-
+base = get_name_ea(0, "_show")
+base
 base = get_name_ea(0, "_ApplePlatformData")
-print 'static PLATFORMDATA ApplePlatformData[] = {'
+base = get_name_ea(0, "_show")
 while 1:
     productName     = readstr(readaddr(base+0))
     firmwareVersion = readstr(readaddr(base+8))  # board version
@@ -66,31 +59,39 @@ while 1:
     smcPlatform     = readstr(readaddr(base+80))
     smcConfig       = readaddr(base+88)
 
-    if productName == None or firmwareVersion == None or boardID == None or productFamily == None or systemVersion == None or serialNumber == None or chassisAsset == None or smcBranch == None or smcConfig == None:
+    if (
+        productName is None
+        or firmwareVersion is None
+        or boardID is None
+        or productFamily is None
+        or systemVersion is None
+        or serialNumber is None
+        or chassisAsset is None
+        or smcBranch is None
+        or smcConfig is None
+    ):
         break
 
-    print '  { "%s", "%s", "%s",' % (productName, firmwareVersion, boardID)
-    print '    "%s", "%s", "%s", "%s",' % (productFamily, systemVersion, serialNumber, chassisAsset)
-    print '    { 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X }, "%s", "%s", 0x%08X },' % (smcRevision[0], smcRevision[1], smcRevision[2], smcRevision[3], smcRevision[4], smcRevision[5], smcBranch, smcPlatform, smcConfig)
-
+    productName     = readstr(readaddr(base+0))
+    productName     = readstr(readaddr(base+0))
+    productName     = readstr(readaddr(base+0))
     base += 0x60
 
     name = get_name(base)
-    if name != None and name != "" and name != "_ApplePlatformData":
+    if name not in [None, "", "_ApplePlatformData"]:
         break
-print '};'
-
+base = get_name_ea(0, "_show")
 base = get_name_ea(0, "_ModelCode")
-print 'static const char *AppleModelCode[] = {'
+base = get_name_ea(0, "_show")
 while 1:
     s = readstr(readaddr(base))
-    if s == None:
+    if s is None:
         break
 
-    print '  "%s",' % s
+    s = readstr(readaddr(base))
     base += 8
 
     name = get_name(base)
-    if name != None and name != "" and name != "_ModelCode":
+    if name not in [None, "", "_ModelCode"]:
         break
-print '};'
+base = get_name_ea(0, "_show")

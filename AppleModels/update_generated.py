@@ -28,7 +28,7 @@ def load_db(dbpath):
   """
 
   if not os.path.exists(dbpath):
-    print("Cannot find %s directory, rerun from AppleModels directory!" % dbpath)
+    print(f"Cannot find {dbpath} directory, rerun from AppleModels directory!")
     sys.exit(1)
 
   db = []
@@ -38,16 +38,16 @@ def load_db(dbpath):
       path = os.path.join(root, file)
       with open(path, 'r') as fh:
         try:
-            r = yaml.safe_load(fh)
-            if r.get('SystemProductName', None) is None:
-                print("WARN: Missing SystemProductName in %s, skipping!" % path)
-                continue
-            db.append(r)
+          r = yaml.safe_load(fh)
+          if r.get('SystemProductName', None) is None:
+            print(f"WARN: Missing SystemProductName in {path}, skipping!")
+            continue
+          db.append(r)
         except yaml.YAMLError as e:
-            print("Failed to parse file %s - %s" % (path, e))
-            sys.exit(1)
+          print(f"Failed to parse file {path} - {e}")
+          sys.exit(1)
 
-  if len(db) == 0:
+  if not db:
     print("Empty database!")
     sys.exit(1)
 
@@ -66,15 +66,19 @@ def gather_products(db, ptype='AppleModelCode', empty_valid=False, shared_valid=
     for p in pp:
       if p == '':
         if not empty_valid:
-          print("ERROR: {} in contains empty {}, skipping!".format(info['SystemProductName'], ptype))
+          print(
+              f"ERROR: {info['SystemProductName']} in contains empty {ptype}, skipping!"
+          )
           if fatal: sys.exit(1)
         continue
-      if p == '000' or p == '0000':
-        print("WARN: {} in contains zero {}, skipping!".format(info['SystemProductName'], ptype))
+      if p in ['000', '0000']:
+        print(f"WARN: {info['SystemProductName']} in contains zero {ptype}, skipping!")
         continue
       if p in products:
         if not shared_valid:
-          print("ERROR: {} shares {} {} with other model!".format(info['SystemProductName'], ptype, p))
+          print(
+              f"ERROR: {info['SystemProductName']} shares {ptype} {p} with other model!"
+          )
           if fatal: sys.exit(1)
         continue
       products.append(p)
@@ -89,10 +93,12 @@ def validate_products(db, dbpd):
   knownproducts = dbpd
   for product in usedproducts:
     if knownproducts.get(product, None) is None:
-      print("ERROR: Model %s is used in DataBase but not present in Products!" % product)
+      print(
+          f"ERROR: Model {product} is used in DataBase but not present in Products!"
+      )
       sys.exit(1)
     if knownproducts[product][update_products.KEY_STATUS] != update_products.STATUS_OK:
-      print("ERROR: Model %s is used in DataBase but not valid in Products!" % product)
+      print(f"ERROR: Model {product} is used in DataBase but not valid in Products!")
       sys.exit(1)
 
   to_add = {}
@@ -106,22 +112,22 @@ def validate_products(db, dbpd):
       continue
     if name.find('M1') >= 0:
       continue
-      
+
     if len(product) > 3 and product not in usedproducts:
-      print("WARN: Model %s (%s) is known but is not used in DataBase!" % (product, name))
+      print(f"WARN: Model {product} ({name}) is known but is not used in DataBase!")
 
       if to_add.get(name, None) is None:
         to_add[name] = []
       to_add[name].append(product)
       continue
 
-  if len(to_add) > 0:
-    for sysname in to_add:
+  if to_add:
+    for sysname, value in to_add.items():
       for info in db:
         if sysname in info['Specifications']['SystemReportName']:
-          print("New AppleModelCode for {}:".format(info['SystemProductName']))
-          for model in to_add[sysname]:
-            print("  - \"{}\"".format(model))
+          print(f"New AppleModelCode for {info['SystemProductName']}:")
+          for model in value:
+            print(f'  - \"{model}\"')
 
 def export_db_macinfolib(db, path, year=0):
   """
@@ -207,13 +213,13 @@ def export_db_macserial(db, dbpd, path, year=0):
     print('typedef enum {', file=fh)
 
     for info in db:
-      print('  {}, // {}'.format(
-          info['SystemProductName'].replace(',', '_'),
-          info['Specifications']['CPU'][0]
-        ), file=fh)
+      print(
+          f"  {info['SystemProductName'].replace(',', '_')}, // {info['Specifications']['CPU'][0]}",
+          file=fh,
+      )
 
     print('} AppleModel;\n', file=fh)
-    print('#define APPLE_MODEL_MAX {}\n'.format(len(db)), file=fh)
+    print(f'#define APPLE_MODEL_MAX {len(db)}\n', file=fh)
 
     print('static PLATFORMDATA ApplePlatformData[] = {', file=fh)
     for info in db:
@@ -224,7 +230,10 @@ def export_db_macserial(db, dbpd, path, year=0):
 
     print('};\n', file=fh)
 
-    print('#define APPLE_MODEL_CODE_MAX {}'.format(max(len(info['AppleModelCode']) for info in db)), file=fh)
+    print(
+        f"#define APPLE_MODEL_CODE_MAX {max((len(info['AppleModelCode']) for info in db))}",
+        file=fh,
+    )
     print('static const char *AppleModelCode[][APPLE_MODEL_CODE_MAX] = {', file=fh)
 
     for info in db:
@@ -235,7 +244,10 @@ def export_db_macserial(db, dbpd, path, year=0):
 
     print('};\n', file=fh)
 
-    print('#define APPLE_BOARD_CODE_MAX {}'.format(max(len(info['AppleBoardCode']) for info in db)), file=fh)
+    print(
+        f"#define APPLE_BOARD_CODE_MAX {max((len(info['AppleBoardCode']) for info in db))}",
+        file=fh,
+    )
     print('static const char *AppleBoardCode[][APPLE_BOARD_CODE_MAX] = {', file=fh)
 
     for info in db:
@@ -246,7 +258,10 @@ def export_db_macserial(db, dbpd, path, year=0):
 
     print('};\n', file=fh)
 
-    print('#define APPLE_MODEL_YEAR_MAX {}'.format(max(len(info['AppleModelYear']) for info in db)), file=fh)
+    print(
+        f"#define APPLE_MODEL_YEAR_MAX {max((len(info['AppleModelYear']) for info in db))}",
+        file=fh,
+    )
     print('static uint32_t AppleModelYear[][APPLE_MODEL_YEAR_MAX] = {', file=fh)
     for info in db:
       print('  /* {:14} */ {{{}}},'.format(
@@ -285,7 +300,8 @@ def export_mlb_boards(db, boards):
   l = {}
   for info in db:
     if len(info['SystemSerialNumber']) == 12:
-      models = [info['BoardProduct']] if not isinstance(info['BoardProduct'], list) else info['BoardProduct']
+      models = (info['BoardProduct'] if isinstance(info['BoardProduct'], list)
+                else [info['BoardProduct']])
 
       for model in models:
         if info['MaximumOSVersion'] is None:

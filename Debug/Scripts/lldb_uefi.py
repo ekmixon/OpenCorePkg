@@ -90,7 +90,7 @@ class ReloadUefi:
             bytes = sbdata.GetByteSize()
             data = array.array ('B')
             error = lldb.SBError()
-            for i in range (0, bytes):
+            for i in range(bytes):
                 data.append (sbdata.GetUnsignedInt8(error, i))
             return data
 
@@ -163,18 +163,18 @@ class ReloadUefi:
     # [32-bit, 16-bit, 16-bit, [8 bytes]]
     #
 
-    def search_config (self, cfg_table, count, guid):
+    def search_config(self, cfg_table, count, guid):
         index = 0
         while index != count:
             # GetChildAtIndex accesses inner structure fields, so we have to use the fugly way.
-            cfg_entry = cfg_table.GetValueForExpressionPath('[{}]'.format(index))
+            cfg_entry = cfg_table.GetValueForExpressionPath(f'[{index}]')
             cfg_guid  = cfg_entry.GetChildMemberWithName('VendorGuid')
             if self.get_field(cfg_guid, 'Data1') == guid[0] and \
-                self.get_field(cfg_guid, 'Data2') == guid[1] and \
-                self.get_field(cfg_guid, 'Data3') == guid[2] and \
-                self.get_field(cfg_guid, 'Data4', True).tolist () == guid[3]:
+                    self.get_field(cfg_guid, 'Data2') == guid[1] and \
+                    self.get_field(cfg_guid, 'Data3') == guid[2] and \
+                    self.get_field(cfg_guid, 'Data4', True).tolist () == guid[3]:
                 return cfg_entry.GetChildMemberWithName('VendorTable')
-            index = index + 1
+            index += 1
         return self.EINVAL
 
     #
@@ -182,13 +182,13 @@ class ReloadUefi:
     # for getting container of a structure.
     #
 
-    def offsetof (self, typename, field):
+    def offsetof(self, typename, field):
         t = self.ptype (typename)
-        for index in range(0, t.GetNumberOfFields()):
+        for index in range(t.GetNumberOfFields()):
             f = t.GetFieldAtIndex(index)
             if f.GetName() == field:
                 return f.GetOffsetInBytes()
-        raise RuntimeError("Cannot find {} in {} to get offset".format(field, typename))
+        raise RuntimeError(f"Cannot find {field} in {typename} to get offset")
 
     #
     # Returns sizeof of a type.
@@ -215,13 +215,13 @@ class ReloadUefi:
     # Returns a dictionary with PE sections.
     #
 
-    def pe_sections (self, opt, file, imagebase):
+    def pe_sections(self, opt, file, imagebase):
         sect_t = self.ptype ('EFI_IMAGE_SECTION_HEADER')
         sections_addr = opt.GetLoadAddress() + opt.GetByteSize()
         sections = self.typed_ptr(sect_t, sections_addr)
         sects = OrderedDict()
         for i in range (self.get_field(file, 'NumberOfSections')):
-            section = sections.GetValueForExpressionPath('[{}]'.format(i))
+            section = sections.GetValueForExpressionPath(f'[{i}]')
             name = self.get_field(section, 'Name', force_bytes=True)
             name = UefiMisc.parse_utf8 (name)
             addr = self.get_field(section, 'VirtualAddress')
@@ -233,11 +233,9 @@ class ReloadUefi:
     # Returns True if pe_headers refer to a PE32+ image.
     #
 
-    def pe_is_64 (self, pe_headers):
+    def pe_is_64(self, pe_headers):
         magic = pe_headers.GetValueForExpressionPath('.Pe32.OptionalHeader.Magic').GetValueAsUnsigned()
-        if magic == self.PE32PLUS_MAGIC:
-            return True
-        return False
+        return magic == self.PE32PLUS_MAGIC
 
     #
     # Returns the PE fileheader.
@@ -288,13 +286,13 @@ class ReloadUefi:
     # Prepares symbol load command with proper section information.
     # Currently supports Mach-O and single-section files.
     #
-    def get_sym_cmd (self, file, orgbase, sections, macho, fallack_base):
+    def get_sym_cmd(self, file, orgbase, sections, macho, fallack_base):
         if file.endswith('.pdb'):
             dll_file   = file.replace('.pdb', '.dll')
-            module_cmd = 'target modules add -s {} {}'.format(file, dll_file)
+            module_cmd = f'target modules add -s {file} {dll_file}'
         else:
             dll_file   = file
-            module_cmd = 'target modules add {}'.format(file)
+            module_cmd = f'target modules add {file}'
         map_cmd = 'target modules load -f {} -s 0x{:X}'.format(dll_file, orgbase)
         return (module_cmd, map_cmd)
 
@@ -305,7 +303,7 @@ class ReloadUefi:
     # TODO: Support TE images.
     #
 
-    def parse_image (self, image, syms):
+    def parse_image(self, image, syms):
         orgbase = base = self.get_field(image, 'ImageBase')
         pe = self.pe_headers (base)
         opt = self.pe_optional (pe)
@@ -336,7 +334,7 @@ class ReloadUefi:
         if self.offset_by_headers:
             base = base + self.get_field(opt, 'SizeOfHeaders')
         if sym_name != self.EINVAL:
-            macho = os.path.isdir(sym_name + '.dSYM')
+            macho = os.path.isdir(f'{sym_name}.dSYM')
             if macho:
                 real_sym = sym_name
             else:
@@ -344,17 +342,20 @@ class ReloadUefi:
                 if sym_name_dbg != sym_name and os.path.exists(sym_name_dbg):
                     real_sym = sym_name_dbg
                 else:
-                    real_sym = None
                     paths    = os.getenv('EFI_SYMBOL_PATH', '').split(':')
-                    for path in paths:
-                        if os.path.exists(os.path.join(path, sym_name)):
-                            real_sym = os.path.join(path, sym_name)
-                            break
+                    real_sym = next(
+                        (
+                            os.path.join(path, sym_name)
+                            for path in paths
+                            if os.path.exists(os.path.join(path, sym_name))
+                        ),
+                        None,
+                    )
 
             if real_sym:
                 syms.append (self.get_sym_cmd (real_sym, orgbase, sections, macho, base))
             else:
-                print('No symbol file {}'.format(sym_name))
+                print(f'No symbol file {sym_name}')
 
     #
     # Parses table EFI_DEBUG_IMAGE_INFO structures, builds
@@ -362,19 +363,19 @@ class ReloadUefi:
     # symbols.
     #
 
-    def parse_edii (self, edii, count):
+    def parse_edii(self, edii, count):
         index = 0
         syms = []
         while index != count:
             # GetChildAtIndex accesses inner structure fields, so we have to use the fugly way again.
-            entry = edii.GetValueForExpressionPath('[{}]'.format(index))
+            entry = edii.GetValueForExpressionPath(f'[{index}]')
             image_type = self.get_field(entry, 'ImageInfoType', single_entry=True)
             if image_type == 1:
                 entry = entry.GetChildMemberWithName('NormalImage')
                 self.parse_image(entry.GetChildMemberWithName('LoadedImageProtocolInstance'), syms)
             else:
                 print ("Skipping unknown EFI_DEBUG_IMAGE_INFO (Type 0x%x)" % image_type)
-            index = index + 1
+            index += 1
         print ("Loading new symbols...")
         for sym in syms:
             print(sym[0])
@@ -485,15 +486,15 @@ class ReloadUefi:
         # FIXME: Support executing code.
         if len(args) >= 1 and args[0] != '':
             gdb.execute ("symbol-file")
-            gdb.execute ("symbol-file %s" % args[0])
+            gdb.execute(f"symbol-file {args[0]}")
         else:
-            for i in range(0, self.debugger.GetNumTargets()):
+            for i in range(self.debugger.GetNumTargets()):
                 target      = self.debugger.GetTargetAtIndex(i)
                 target_name = str(target)
-                print('Target {} is "{}"'.format(i, target_name))
-                if target_name.find('GdbSyms') >= 0:
+                print(f'Target {i} is "{target_name}"')
+                if 'GdbSyms' in target_name:
                     self.typetarget = target
-                elif target_name.find('No executable module.') >= 0:
+                elif 'No executable module.' in target_name:
                     self.activetarget = target
 
         if not self.typetarget:

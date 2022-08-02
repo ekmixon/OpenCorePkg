@@ -65,7 +65,7 @@ def map_legacy_status(status):
     return STATUS_EXCEPT
   if status == 'not found':
     return STATUS_NOT_FOUND
-  raise RuntimeError('Invalid legacy status {}'.format(status))
+  raise RuntimeError(f'Invalid legacy status {status}')
 
 def base34_to_num(str):
     num = 0
@@ -102,20 +102,24 @@ def load_products(path='Products.zjson'):
         for entry in db:
           db[entry]['date'] = time.mktime(db[entry]['date'].timetuple())
       if len(db) > 0 and db[next(iter(db))].get('date', None) is not None:
-        newdb = {}
-        for entry in db:
-          newdb[entry] = {
-            KEY_NAME:   db[entry]['name'] if db[entry]['name'] is not None else 0,
-            KEY_EXCEPT: db[entry]['except'] if db[entry]['except'] is not None else 0,
-            KEY_STATUS: map_legacy_status(db[entry]['status']),
-            KEY_DATE:   db[entry]['date'],
-          }
-        return newdb
+        return {
+            entry: {
+                KEY_NAME:
+                db[entry]['name'] if db[entry]['name'] is not None else 0,
+                KEY_EXCEPT:
+                db[entry]['except'] if db[entry]['except'] is not None else 0,
+                KEY_STATUS:
+                map_legacy_status(db[entry]['status']),
+                KEY_DATE:
+                db[entry]['date'],
+            }
+            for entry in db
+        }
       return db
   except IOError:
     return {}
   except Exception as e:
-    print("Failed to parse file {} - {}".format(path, str(e)))
+    print(f"Failed to parse file {path} - {str(e)}")
     sys.exit(1)
 
 def save_database(database, path):
@@ -138,26 +142,30 @@ def update_product(database, model, database_path, force = False, retention = 90
 
   if prev is not None:
     if force is False and prev[KEY_STATUS] == STATUS_OK:
-      print(u'{} - {} (skip)'.format(model, prev[KEY_NAME]))
+      print(f'{model} - {prev[KEY_NAME]} (skip)')
       return ADD_SKIP
 
     curr   = current_date()
     expire = prev[KEY_DATE] + retention*24*3600
     if expire > curr and prev[KEY_STATUS] == STATUS_NOT_FOUND:
-      print(u'{} - not found (skip {})'.format(model, datetime.date.fromtimestamp(prev[KEY_DATE])))
+      print(
+          f'{model} - not found (skip {datetime.date.fromtimestamp(prev[KEY_DATE])})'
+      )
       return ADD_SKIP
 
     expire = prev[KEY_DATE] + retention*24*3600 / 2
     if expire > curr and prev[KEY_STATUS] == STATUS_PENDING:
-      print(u'{} - pending (skip {})'.format(model, datetime.date.fromtimestamp(prev[KEY_DATE])))
+      print(
+          f'{model} - pending (skip {datetime.date.fromtimestamp(prev[KEY_DATE])})'
+      )
       return ADD_SKIP
 
   try:
-    url    = 'http://support-sp.apple.com/sp/product?cc={}'.format(model)
+    url = f'http://support-sp.apple.com/sp/product?cc={model}'
     opener = build_opener()
     mm     = random.choice(range(11, 16))
     ff     = random.choice(range(50, 70))
-    agent  = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.{}; rv:{}) Gecko/20100101 Firefox/{}'.format(mm, ff, ff)
+    agent = f'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.{mm}; rv:{ff}) Gecko/20100101 Firefox/{ff}'
     opener.addheaders = [
       ('Host', 'support-sp.apple.com'),
       ('User-Agent', agent),
@@ -172,7 +180,7 @@ def update_product(database, model, database_path, force = False, retention = 90
     response = opener.open(url)
     root     = xml.etree.ElementTree.fromstring(response.read())
   except Exception as e:
-    print(u'{} - except ({})'.format(model, str(e)))
+    print(f'{model} - except ({str(e)})')
     store_product(database, model, None, str(e), STATUS_EXCEPT)
     time.sleep(1)
     return ADD_EXCEPT
@@ -180,20 +188,20 @@ def update_product(database, model, database_path, force = False, retention = 90
   if root.find('error') is None and root.find('configCode') is not None:
     name   = root.find('configCode').text
     status = STATUS_OK if name is not None else STATUS_PENDING
-    print(u'{} - {}'.format(model, name))
+    print(f'{model} - {name}')
     store_product(database, model, name, None, status)
     save_database(database, database_path) # Always store valid product
     return ADD_NEW
   else:
-    print(u'{} - not found'.format(model))
+    print(f'{model} - not found')
     store_product(database, model, None, None, STATUS_NOT_FOUND)
     return ADD_DUMMY
 
 def merge_products(database, database_path, filename):
-  print('Merging {}'.format(filename))
+  print(f'Merging {filename}')
 
   if not os.path.exists(filename):
-    print(u'File {} is missing'.format(filename))
+    print(f'File {filename} is missing')
     sys.exit(1)
 
   new_database = load_products(filename)
@@ -210,7 +218,7 @@ def merge_products(database, database_path, filename):
       elif old[KEY_STATUS] != STATUS_OK and new[KEY_DATE] > old[KEY_DATE]:
         store = True # Update new status
       else:
-        print(u'Skipping {} entry for {}'.format(str(old), str(new)))
+        print(f'Skipping {str(old)} entry for {str(new)}')
 
     if store:
       store_product(database, model, new[KEY_NAME],
@@ -227,7 +235,7 @@ def update_products(database, start_from, end_with, database_path, force = False
     start += 1
     if new == ADD_NEW:
       countdown  = savenum
-    elif new == ADD_DUMMY or new == ADD_EXCEPT:
+    elif new in [ADD_DUMMY, ADD_EXCEPT]:
       if countdown == 0:
         save_database(database, database_path)
         countdown  = savenum

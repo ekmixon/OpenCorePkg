@@ -737,7 +737,6 @@ g_target_definition = None
 def get_target_definition(triple):
     global g_target_definition
     if g_target_definition is None:
-        g_target_definition = {}
         offset = 0
         for reg_info in x86_64_register_infos:
             reg_name = reg_info['name']
@@ -764,9 +763,10 @@ def get_target_definition(triple):
             if reg_num != LLDB_INVALID_REGNUM:
                 reg_info['gdb'] = reg_num
 
-        g_target_definition['sets'] = [
-            'General Purpose Registers',
-            'Floating Point Registers']
+        g_target_definition = {
+            'sets': ['General Purpose Registers', 'Floating Point Registers']
+        }
+
         g_target_definition['registers'] = x86_64_register_infos
         g_target_definition[
             'host-info'] = {'triple': triple, 'endian': eByteOrderLittle}
